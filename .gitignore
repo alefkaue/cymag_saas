@@ -1,0 +1,30 @@
+# Ambiente
+venv/
+.venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Segredos e dados locais
+.env
+api.txt
+instance/
+*.db
+*.sqlite3
+
+# Relatórios gerados
+relatorios/
+*.pdf
+
+# Binário Go compilado
+scanner_go/cymag_scan
+scanner_go/cymag_scan.exe
+
+# SO / editores
+.DS_Store
+.vscode/
+.idea/

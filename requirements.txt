@@ -1,0 +1,16 @@
+# CYMAG Enterprise — dependências
+# Obrigatórias
+flask>=3.0
+groq>=0.11
+requests>=2.31
+fpdf2>=2.7
+python-dotenv>=1.0
+
+# Recomendadas (recursos extras; há fallback quando ausentes)
+psutil>=5.9          # auto-descoberta de rede portável
+python-nmap>=0.7     # detecção de serviços via Nmap (requer o Nmap instalado no SO)
+paho-mqtt>=1.6       # exploração de brokers MQTT
+pymysql>=1.1         # checagem de credenciais MySQL
+
+# Desenvolvimento / testes
+pytest>=8.0          # suíte de testes (pytest tests/)

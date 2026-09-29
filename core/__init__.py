@@ -1,0 +1,1 @@
+# CYMAG core package
