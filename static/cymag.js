@@ -14,8 +14,14 @@ const state = { user: null, lastScan: null, engagements: [], section: null, auto
 const hasFeature = (f) => !!(state.user && state.user.plan && state.user.plan[f]);
 const ROLE_LABEL = { owner: "Dono", operator: "Operador", viewer: "Executivo", cymag: "Equipe CYMAG", admin: "Admin" };
 
-/* ─── API ─── */
+/* ─── API ───
+   Quando o modo demonstração está ativo (window.CYMAG_DEMO.active), toda chamada
+   é atendida client-side por window.__demoApi — mesmo formato de resposta do
+   backend real. É isso que permite hospedar o projeto de graça, sem servidor. */
+function isDemo() { return !!(window.CYMAG_DEMO && window.CYMAG_DEMO.active); }
+
 async function api(path, { method = "GET", body = null } = {}) {
+  if (isDemo()) return window.__demoApi(path, { method, body });
   const opts = { method, headers: {} };
   if (body) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
   const r = await fetch(path, opts);
@@ -33,7 +39,7 @@ function toast(msg, kind = "info", ms = 3800) {
   $("#toasts").appendChild(t);
   setTimeout(() => t.remove(), ms);
 }
-function openModal(html) { $("#modal").innerHTML = html; $("#modal-back").classList.add("open"); }
+function openModal(html, wide) { const m = $("#modal"); m.innerHTML = html; m.classList.toggle("wide", !!wide); $("#modal-back").classList.add("open"); }
 function closeModal() { $("#modal-back").classList.remove("open"); }
 $("#modal-back").addEventListener("click", e => { if (e.target.id === "modal-back") closeModal(); });
 
@@ -48,6 +54,7 @@ const ICONS = {
   resumo: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/>',
   central: '<path d="M9 11l3 3L22 4"/><path d="M22 12v7a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
   conta: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  billing: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>',
   planos: '<path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>',
 };
 const icon = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[n] || ""}</svg>`;
@@ -63,6 +70,7 @@ const SECTION_META = {
   resumo:      { title: "Resumo", sub: "O que encontramos, o risco e o que decidir — em português" },
   central:     { title: "Central CYMAG", sub: "Entrega dos pentests gerenciados aos clientes" },
   conta:       { title: "Minha Conta", sub: "Plano, equipe e serviços da sua empresa" },
+  billing:     { title: "Assinatura", sub: "Seu plano, cobrança e gestão da assinatura" },
   planos:      { title: "Planos", sub: "Assinaturas, recursos e preços" },
 };
 // A tela é escolhida pelo PAPEL:
@@ -72,7 +80,7 @@ const SECTION_META = {
 //   cymag/admin      → console técnico + Central (entrega gerenciada).
 const NAV = {
   operator: ["overview", "scan", "autonomous", "engagements", "areas", "history"],
-  owner:    ["resumo", "conta"],
+  owner:    ["resumo", "conta", "billing"],
   viewer:   ["exec", "history"],
   cymag:    ["overview", "scan", "autonomous", "engagements", "areas", "history", "central"],
   admin:    ["overview", "scan", "autonomous", "engagements", "areas", "history", "central", "resumo"],
@@ -116,6 +124,36 @@ async function doLogin() {
 $("#login-btn").addEventListener("click", doLogin);
 $("#view-login").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
 
+/* ─── MODO DEMONSTRAÇÃO ─── */
+function enterDemo(role) {
+  if (!window.CYMAG_DEMO) { toast("Demo indisponível.", "err"); return; }
+  window.CYMAG_DEMO.enable();
+  if (role) window.CYMAG_DEMO.setRole(role);
+  renderDemoBar();
+  enterApp(window.CYMAG_DEMO.identity());
+}
+function renderDemoBar() {
+  const bar = $("#demobar"), sw = $("#role-switch");
+  if (!isDemo()) { bar.classList.add("hidden"); return; }
+  bar.classList.remove("hidden");
+  const D = window.CYMAG_DEMO;
+  sw.innerHTML = D.roles.map(r =>
+    `<button class="${r === D.role ? "active" : ""}" data-role="${r}">${D.roleLabels[r]}</button>`).join("");
+  $$("#role-switch button").forEach(b => b.addEventListener("click", () => {
+    D.setRole(b.dataset.role);
+    enterApp(D.identity());           // re-entra com o novo papel (nav e telas mudam)
+    renderDemoBar();
+    toast(`Agora você vê como: ${D.roleLabels[b.dataset.role]}`, "info");
+  }));
+}
+$("#demo-btn").addEventListener("click", () => enterDemo("owner"));
+$("#demo-reset").addEventListener("click", () => {
+  window.CYMAG_DEMO.reset();
+  toast("Demonstração reiniciada.", "ok");
+  enterApp(window.CYMAG_DEMO.identity());
+  renderDemoBar();
+});
+
 /* ─── APP INIT ─── */
 function enterApp(user) {
   state.user = user;
@@ -136,11 +174,31 @@ function enterApp(user) {
   $$("#nav .nav-item").forEach(b => b.addEventListener("click", () => { showSection(b.dataset.sec); closeSidebar(); }));
 
   showApp();
+  primeDemoScan(items[0]);
   showSection(items[0]);
+}
+
+/* No modo demo, as telas técnicas (Painel/Executivo) ficariam vazias porque o
+   usuário ainda não rodou um scan. Pré-carregamos o último scan semeado para a
+   demonstração já abrir com dados. */
+function primeDemoScan(firstSection) {
+  if (!isDemo() || state.lastScan) return;
+  const technical = ["operator", "cymag", "admin", "viewer"].includes(state.user.role);
+  if (!technical) return;
+  api("/api/scans/1001/findings").then(d => {
+    const f = d.findings || [];
+    if (!f.length) return;
+    state.lastScan = { target: "192.168.0.0/24", cyber_vulns: f,
+      exec_risks: [], risk_score: Math.min(100, f.reduce((t, x) => t + ({ crit: 15, high: 8, med: 3, low: 1, info: 0 }[x.sev] ?? 1), 0)),
+      scan_id: 1001 };
+    if (["overview", "exec"].includes(state.section)) showSection(state.section);
+  }).catch(() => {});
 }
 
 async function logout() {
   try { await api("/api/logout", { method: "POST" }); } catch (e) {}
+  if (window.CYMAG_DEMO) window.CYMAG_DEMO._active = false;
+  $("#demobar").classList.add("hidden");
   state.user = null; state.lastScan = null; clearInterval(state.autoTimer);
   showLogin();
 }
@@ -177,6 +235,7 @@ const RENDER = {
   resumo: renderResumo,
   central: renderCentral,
   conta: renderConta,
+  billing: renderBilling,
   planos: renderPlans,
 };
 
@@ -197,8 +256,7 @@ function renderOverview() {
       </div>
       <div class="card">
         <h3>Achados por severidade</h3>
-        ${["crit", "high", "med", "low", "info"].map(k =>
-          `<div class="row spread" style="padding:.35rem 0;border-bottom:1px solid var(--line)">${sevBadge(k)}<b class="mono">${counts[k] || 0}</b></div>`).join("")}
+        ${sevBars(counts)}
       </div>
       <div class="card">
         <h3>Ações rápidas</h3>
@@ -590,8 +648,14 @@ async function renderResumo() {
         <div class="row spread"><span>Verba autorizada</span><b class="mono">${esc(sum.authorized_budget_label)}</b></div>
       </div>
     </div>
-    <div class="card mb" style="border-left:3px solid ${gaugeColor(score)}">
-      <p style="margin:0">${riskPlainText(score, sum)}</p>
+    <div class="grid grid-2 mb">
+      <div class="card ${score >= 60 ? "callout warn" : score >= 30 ? "callout" : "callout good"}" style="display:flex;align-items:center">
+        <p style="margin:0">${riskPlainText(score, sum)} ${roiText(sum)}</p>
+      </div>
+      <div class="card">
+        <h3>Distribuição por gravidade</h3>
+        ${sevBars(sum.by_severity)}
+      </div>
     </div>
     <div class="card-title-row"><h3 style="margin:.4rem 0">Problemas encontrados</h3><span class="mut">${d.problems.length} listado(s), do mais grave ao mais leve</span></div>
     <div id="resumo-problems">${d.problems.map(problemCard).join("") || '<div class="card"><p class="empty">Nenhum problema encontrado. 🎉</p></div>'}</div>`;
@@ -600,6 +664,25 @@ async function renderResumo() {
     const item = d.problems.find(p => String(p.finding_id) === btn.dataset.budget);
     if (item) openBudgetModal(item);
   }));
+}
+
+function roiText(sum) {
+  const loss = (sum.open_loss_min + sum.open_loss_max) / 2;
+  const fix = (sum.open_fix_min + sum.open_fix_max) / 2;
+  if (!fix || !loss) return "";
+  const ratio = Math.round(loss / fix);
+  return `<b>Retorno:</b> cada R$ 1 investido em correção protege cerca de <b>R$ ${ratio}</b> em prejuízo potencial.`;
+}
+
+function sevBars(bySev) {
+  const order = ["crit", "high", "med", "low", "info"];
+  const max = Math.max(1, ...order.map(k => bySev[k] || 0));
+  return `<div class="sevbars">${order.map(k => {
+    const n = bySev[k] || 0;
+    return `<div class="sevbar"><span>${SEV[k]}</span>
+      <div class="track"><div class="fill ${k}" style="width:${Math.round((n / max) * 100)}%"></div></div>
+      <b>${n}</b></div>`;
+  }).join("")}</div>`;
 }
 
 function riskPlainText(score, sum) {
@@ -748,32 +831,222 @@ function execRemediationHTML(r) {
 }
 window.closeModalGlobal = closeModal;
 
-/* ═══════════ PLANOS ═══════════ */
+/* ═══════════ PLANOS / ASSINATURA ═══════════ */
 const BRL = (v) => v === 0 ? "Grátis" : "R$ " + Number(v).toLocaleString("pt-BR");
+const POPULAR_PLAN = "profissional";
+const canManagePlan = () => ["owner", "admin"].includes(state.user?.role);
+state.cycle = state.cycle || "month";
+
+const PLAN_FEATS = (p) => [
+  { on: true, t: "Scanner de rede (Python + Go)" },
+  { on: p.autonomous, t: "Agente autônomo" },
+  { on: p.ai, t: "Copiloto de IA (AEGIS)" },
+  { on: p.training, t: "Treinamento / onboarding" },
+  { on: p.managed, t: "Pentest gerenciado + laudo assinado" },
+];
+
+function applyPlanChange(resp) {
+  // Atualiza o plano em memória e o chip da sidebar sem recarregar a sessão.
+  if (resp && resp.plan) {
+    state.user.plan = Object.assign({}, state.user.plan, resp.plan);
+    const org = state.user.account?.name || state.user.role;
+    $("#u-role").textContent = `${org} · ${state.user.plan.name}`;
+    // Modo autônomo pode ter sido liberado/retirado → recria a navegação.
+    enterApp(state.user);
+  }
+}
+
 function renderPlans() {
   const box = $("#sec-planos");
   box.innerHTML = `<div class="card"><span class="spinner"></span> <span class="mut">Carregando planos…</span></div>`;
   api("/api/plans").then(({ plans }) => {
     const cur = state.user?.plan?.key;
-    box.innerHTML = `<div class="grid grid-4">${plans.map(p => {
-      const feats = [
-        { on: true, t: "Scanner Python + Go" },
-        { on: p.autonomous, t: "Agente autônomo" },
-        { on: p.ai, t: "Copiloto de IA (AEGIS)" },
-        { on: p.training, t: "Treinamento / onboarding" },
-        { on: p.managed, t: "Pentest gerenciado + laudo assinado" },
-      ];
-      return `<div class="card" style="${p.key === cur ? "border:1px solid var(--blue)" : ""}">
-        <div class="row spread"><h3>${esc(p.name)}</h3>${p.key === cur ? '<span class="badge badge-area">Seu plano</span>' : ""}</div>
-        <div style="font-size:1.5rem;font-weight:700;margin:.3rem 0">${BRL(p.price_month)}<span class="mut" style="font-size:.8rem;font-weight:400">/mês</span></div>
-        <div class="mut" style="font-size:.78rem;margin-bottom:.6rem">${p.price_year ? BRL(p.price_year) + "/ano" : "sob consulta"} · ${p.scans_per_month === null ? "scans ilimitados" : p.scans_per_month + " scans/mês"}</div>
-        <p class="mut" style="font-size:.76rem;min-height:2.4em;margin:0 0 .5rem">${esc(p.tagline || "")}</p>
-        <div style="font-size:.82rem">${feats.map(f => `<div style="padding:.2rem 0;${f.on ? "" : "opacity:.4"}">${f.on ? "✅" : "—"} ${f.t}</div>`).join("")}</div>
-        <p class="mut" style="font-size:.74rem;margin:.6rem 0 0">${esc(p.audience)}</p>
-      </div>`;
-    }).join("")}</div>
-    <p class="mut" style="margin-top:1rem;font-size:.8rem">Enterprise: preço a partir do exibido, sob consulta (per-IP, on-prem, integrações e OT/IoT).</p>`;
+    const annual = state.cycle === "year";
+    box.innerHTML = `
+      <div class="row spread mb" style="align-items:flex-end">
+        <div><p class="mut" style="margin:0;max-width:60ch">Escolha o quanto a CYMAG faz <b>por você</b>. Do scan manual ao pentest gerenciado com laudo assinado. Troque de plano quando quiser.</p></div>
+        <div class="seg" id="cycle-seg">
+          <button data-cycle="month" class="${annual ? "" : "active"}">Mensal</button>
+          <button data-cycle="year" class="${annual ? "active" : ""}">Anual <span class="save-pill">2 meses grátis</span></button>
+        </div>
+      </div>
+      <div class="pricing-grid">${plans.map(p => planCard(p, cur, annual)).join("")}</div>
+      <p class="mut" style="margin-top:1rem;font-size:.8rem">Valores em BRL. Enterprise é venda consultiva (per-IP, on-prem, integrações e OT/IoT). Esta é uma assinatura <b>simulada</b> para fins de demonstração — nenhuma cobrança real é feita.</p>`;
+    $$("#cycle-seg button").forEach(b => b.addEventListener("click", () => { state.cycle = b.dataset.cycle; renderPlans(); }));
+    $$("[data-choose]", box).forEach(b => b.addEventListener("click", () => choosePlan(b.dataset.choose, plans)));
   }).catch(() => { box.innerHTML = `<div class="card"><p class="mut">Falha ao carregar planos.</p></div>`; });
+}
+
+function planCard(p, cur, annual) {
+  const isCur = p.key === cur;
+  const isEnt = p.key === "enterprise";
+  const price = annual ? p.price_year : p.price_month;
+  const per = annual ? "/ano" : "/mês";
+  const cls = ["plan-card", "hover", isCur ? "current" : "", p.key === POPULAR_PLAN ? "popular" : ""].join(" ");
+  let cta;
+  if (isCur) cta = `<button class="btn btn-block" disabled>✓ Plano atual</button>`;
+  else if (isEnt) cta = `<button class="btn btn-block" data-choose="${p.key}">Falar com vendas</button>`;
+  else if (!canManagePlan()) cta = `<button class="btn btn-block" disabled title="Só o dono da conta troca o plano">Gerenciado pelo dono</button>`;
+  else cta = `<button class="btn btn-block ${p.key === POPULAR_PLAN ? "btn-gradient" : "btn-primary"}" data-choose="${p.key}">${p.price_month === 0 ? "Começar grátis" : "Assinar"}</button>`;
+  return `<div class="${cls}">
+    ${p.key === POPULAR_PLAN ? `<span class="plan-ribbon">Mais popular</span>` : ""}
+    <div class="plan-name">${esc(p.name)}</div>
+    <div class="plan-price"><span class="amt">${BRL(price)}</span><span class="per">${price ? per : (isEnt ? "sob consulta" : "para sempre")}</span></div>
+    <div class="mut" style="font-size:.76rem;margin-bottom:.3rem">${p.scans_per_month === null ? "Scans ilimitados" : p.scans_per_month + " scan(s)/mês"}${annual && p.price_month ? " · equivale a " + BRL(Math.round(p.price_year / 12)) + "/mês" : ""}</div>
+    <p class="plan-sub">${esc(p.tagline || "")}</p>
+    <div class="plan-feats">${PLAN_FEATS(p).map(f => `<div class="plan-feat ${f.on ? "" : "off"}"><span class="${f.on ? "ck" : "xk"}">${f.on ? "✓" : "—"}</span> ${f.t}</div>`).join("")}</div>
+    ${cta}
+    <p class="plan-aud">${esc(p.audience)}</p>
+  </div>`;
+}
+
+function choosePlan(key, plans) {
+  const p = plans.find(x => x.key === key);
+  if (!p) return;
+  if (key === "enterprise") {
+    openModal(`<h2>Plano Enterprise</h2>
+      <p class="mut">O Enterprise é sob consulta: contínuo, dedicado, com integrações, on-premise e cobertura OT/IoT. Preço a partir de ${BRL(p.price_month)}/mês conforme o número de IPs e o escopo.</p>
+      <div class="callout mb">Deixe seu contato que o time comercial da CYMAG retorna em até 1 dia útil.</div>
+      <div class="field"><label class="field-label">E-mail para contato</label><input class="input" id="ent-email" value="${esc(state.user?.email || "")}"></div>
+      <div class="row" style="justify-content:flex-end;margin-top:1rem"><button class="btn" onclick="closeModalGlobal()">Fechar</button>
+        <button class="btn btn-primary" id="ent-send">Solicitar contato</button></div>`);
+    $("#ent-send").addEventListener("click", () => { closeModal(); toast("Solicitação registrada! O comercial entrará em contato.", "ok"); });
+    return;
+  }
+  openCheckout(p);
+}
+
+/* ═══════════ CHECKOUT (assinatura simulada) ═══════════ */
+function openCheckout(p) {
+  const annual = state.cycle === "year";
+  const amount = annual ? p.price_year : p.price_month;
+  const free = amount === 0;
+  const period = annual ? "ano" : "mês";
+  openModal(`<h2>${free ? "Começar no plano" : "Assinar plano"} ${esc(p.name)}</h2>
+    <div class="checkout-grid">
+      <div>
+        ${free ? `<div class="callout good mb">O plano ${esc(p.name)} é gratuito. Nenhum pagamento é necessário.</div>` : `
+        <div class="card-visual">
+          <div class="chip"></div>
+          <div class="num" id="cc-preview">•••• •••• •••• 4242</div>
+          <div class="meta"><span id="cc-name-preview">NOME NO CARTÃO</span><span id="cc-exp-preview">MM/AA</span></div>
+        </div>
+        <div class="seg mb" id="co-cycle">
+          <button data-cycle="month" class="${annual ? "" : "active"}">Mensal · ${BRL(p.price_month)}</button>
+          <button data-cycle="year" class="${annual ? "active" : ""}">Anual · ${BRL(p.price_year)}</button>
+        </div>
+        <div class="field"><label class="field-label">Nome no cartão</label><input class="input" id="cc-name" placeholder="Ana Souza" value="${esc(state.user?.name || "")}"></div>
+        <div class="field"><label class="field-label">Número do cartão</label><input class="input" id="cc-num" inputmode="numeric" placeholder="4242 4242 4242 4242" value="4242 4242 4242 4242"></div>
+        <div class="row">
+          <div class="field" style="flex:1"><label class="field-label">Validade</label><input class="input" id="cc-exp" placeholder="12/28" value="12/28"></div>
+          <div class="field" style="flex:1"><label class="field-label">CVV</label><input class="input" id="cc-cvv" placeholder="123" value="123"></div>
+        </div>`}
+        <p class="sim-note">🔒 Pagamento <b>simulado</b> (ambiente de demonstração/MVP). Não insira dados reais — nenhuma cobrança é processada.</p>
+      </div>
+      <div>
+        <div class="summary-box">
+          <h3 style="margin-top:0">Resumo do pedido</h3>
+          <div class="summary-line"><span>Plano ${esc(p.name)}</span><span>${BRL(amount)}</span></div>
+          <div class="summary-line"><span>Ciclo</span><span id="co-cycle-label">${annual ? "Anual" : "Mensal"}</span></div>
+          ${annual && p.price_month ? `<div class="summary-line" style="color:var(--green)"><span>Economia anual</span><span>${BRL(p.price_month * 12 - p.price_year)}</span></div>` : ""}
+          <div class="summary-total"><span>Total hoje</span><span id="co-total">${BRL(amount)}</span></div>
+          <p class="mut" style="font-size:.74rem;margin:.6rem 0 0">${free ? "Sem cobrança." : `Renova automaticamente a cada ${period}. Cancele quando quiser.`}</p>
+          <button class="btn btn-gradient btn-block btn-lg" id="co-confirm" style="margin-top:1rem">${free ? "Ativar plano" : "Confirmar assinatura"}</button>
+          <button class="btn btn-block btn-ghost btn-sm" style="margin-top:.4rem" onclick="closeModalGlobal()">Cancelar</button>
+        </div>
+      </div>
+    </div>`, true);
+
+  // live preview do cartão
+  const sync = () => {
+    const nm = $("#cc-name")?.value.trim().toUpperCase() || "NOME NO CARTÃO";
+    const num = ($("#cc-num")?.value || "").replace(/\s+/g, "").slice(-4);
+    if ($("#cc-name-preview")) $("#cc-name-preview").textContent = nm;
+    if ($("#cc-exp-preview")) $("#cc-exp-preview").textContent = $("#cc-exp")?.value || "MM/AA";
+    if ($("#cc-preview")) $("#cc-preview").textContent = "•••• •••• •••• " + (num || "4242");
+  };
+  ["cc-name", "cc-num", "cc-exp"].forEach(id => $("#" + id)?.addEventListener("input", sync));
+  $$("#co-cycle button").forEach(b => b.addEventListener("click", () => { state.cycle = b.dataset.cycle; closeModal(); openCheckout(p); }));
+  $("#co-confirm").addEventListener("click", () => confirmSubscription(p));
+}
+
+async function confirmSubscription(p) {
+  const btn = $("#co-confirm");
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Processando pagamento…'; }
+  try {
+    const resp = await api("/api/account/plan", { method: "POST", body: { plan: p.key, cycle: state.cycle } });
+    closeModal();
+    applyPlanChange(resp);
+    toast(`Assinatura do plano ${p.name} ativada! 🎉`, "ok");
+    showSection("billing");
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = "Confirmar assinatura"; }
+    toast(e.message || "Falha ao assinar.", "err");
+  }
+}
+
+/* ═══════════ FATURAMENTO / ASSINATURA ═══════════ */
+function renderBilling() {
+  const box = $("#sec-billing");
+  box.innerHTML = `<div class="card"><span class="spinner"></span> <span class="mut">Carregando assinatura…</span></div>`;
+  api("/api/billing/summary").then(b => {
+    const p = b.plan;
+    const cycleLabel = b.cycle === "year" ? "Anual" : "Mensal";
+    const nextCharge = b.next_charge_at ? b.next_charge_at.replace("T", " ").slice(0, 10) : null;
+    box.innerHTML = `
+      <div class="grid grid-3 mb">
+        <div class="card">
+          <h3>Plano atual</h3>
+          <div style="font-size:1.6rem;font-weight:800">${esc(p.name)}</div>
+          <p class="mut" style="font-size:.82rem;margin:.2rem 0 .8rem">${esc(p.tagline || "")}</p>
+          <button class="btn btn-primary btn-block" id="bill-change">Trocar de plano</button>
+        </div>
+        <div class="card">
+          <h3>Cobrança</h3>
+          <div class="kpi-money">${BRL(b.amount)}<span class="kpi-sub">/${b.cycle === "year" ? "ano" : "mês"}</span></div>
+          <div class="divider"></div>
+          <div class="row spread"><span class="mut">Ciclo</span><b>${cycleLabel}</b></div>
+          <div class="row spread"><span class="mut">Próxima cobrança</span><b>${nextCharge || "—"}</b></div>
+          <div class="row spread"><span class="mut">Forma de pagamento</span><b>•••• 4242</b></div>
+        </div>
+        <div class="card">
+          <h3>Serviço gerenciado</h3>
+          ${b.managed_cadence_days
+            ? `<p>A CYMAG executa o pentest <b>a cada ${b.managed_cadence_days} dias</b> e assina o laudo.</p>
+               <p class="mut" style="font-size:.82rem">Próxima entrega: ${esc((b.next_managed_at || "a agendar").replace("T", " ").slice(0, 10))}</p>`
+            : `<p class="mut">Seu plano é self-service. No plano <b>Gerenciado</b>, a CYMAG faz o pentest por você e assina o laudo.</p>`}
+        </div>
+      </div>
+      <div class="card">
+        <h3>Gerenciar assinatura</h3>
+        <div class="row">
+          <button class="btn" id="bill-upgrade">Ver todos os planos</button>
+          <button class="btn" id="bill-invoice">Baixar recibo (demo)</button>
+          ${p.key !== "comunidade" ? `<button class="btn btn-danger" id="bill-cancel">Cancelar assinatura</button>` : ""}
+        </div>
+        <p class="mut" style="font-size:.76rem;margin:.9rem 0 0">Histórico de cobranças e emissão de nota fiscal apareceriam aqui em produção. Nesta demonstração a cobrança é simulada.</p>
+      </div>`;
+    $("#bill-change").addEventListener("click", () => showSection("planos"));
+    $("#bill-upgrade").addEventListener("click", () => showSection("planos"));
+    $("#bill-invoice").addEventListener("click", () => toast("Recibo gerado (demo).", "ok"));
+    $("#bill-cancel")?.addEventListener("click", cancelSubscription);
+  }).catch(() => { box.innerHTML = `<div class="card"><p class="mut">Falha ao carregar a assinatura.</p></div>`; });
+}
+
+function cancelSubscription() {
+  openModal(`<h2>Cancelar assinatura</h2>
+    <p>Ao cancelar, sua conta volta ao plano <b>Comunidade</b> (gratuito): scan manual em um alvo, sem agente autônomo nem IA.</p>
+    <div class="callout warn mb">Você perde o agente autônomo, o copiloto de IA e os relatórios profissionais.</div>
+    <div class="row" style="justify-content:flex-end;margin-top:1rem">
+      <button class="btn" onclick="closeModalGlobal()">Manter plano</button>
+      <button class="btn btn-danger" id="cancel-confirm">Confirmar cancelamento</button>
+    </div>`);
+  $("#cancel-confirm").addEventListener("click", async () => {
+    try {
+      const resp = await api("/api/account/plan", { method: "POST", body: { plan: "comunidade", cycle: "month" } });
+      closeModal(); applyPlanChange(resp); toast("Assinatura cancelada. Você está no plano Comunidade.", "info"); showSection("billing");
+    } catch (e) { toast(e.message || "Falha ao cancelar.", "err"); }
+  });
 }
 
 /* ═══════════ CENTRAL CYMAG (entrega dos pentests gerenciados) ═══════════ */
@@ -854,10 +1127,13 @@ function renderConta() {
   }).catch(() => { box.innerHTML = `<div class="card"><p class="mut">Falha ao carregar a conta.</p></div>`; });
 }
 
-/* ─── PDF ─── */
+/* ─── PDF / RELATÓRIO ─── */
 async function downloadPDF(kind) {
   const s = state.lastScan;
   if (!s) { toast("Rode um scan primeiro.", "err"); return; }
+  // No modo demonstração não há backend/fpdf: geramos um relatório imprimível no
+  // navegador (o usuário salva como PDF pelo diálogo de impressão).
+  if (isDemo()) { openPrintableReport(s, kind); return; }
   toast("Gerando PDF…", "info");
   const body = { target: s.target, findings: s.cyber_vulns, exec_risks: s.exec_risks || [], score: s.risk_score };
   if (kind === "detailed") body.instructions = "Relatório profissional de segurança do CYMAG.";
@@ -870,6 +1146,60 @@ async function downloadPDF(kind) {
     URL.revokeObjectURL(url);
     toast("PDF gerado.", "ok");
   } catch (e) { toast("Falha ao gerar PDF.", "err"); }
+}
+
+/* Relatório imprimível (modo demo) — abre uma janela formatada; o usuário salva
+   como PDF pelo próprio navegador (Ctrl+P → Salvar como PDF). */
+function openPrintableReport(s, kind) {
+  const list = [...(s.cyber_vulns || [])].sort((a, b) => (SEV_ORDER[a.sev] ?? 9) - (SEV_ORDER[b.sev] ?? 9));
+  const counts = { crit: 0, high: 0, med: 0, low: 0, info: 0 };
+  list.forEach(f => counts[f.sev] = (counts[f.sev] || 0) + 1);
+  const when = new Date().toLocaleString("pt-BR");
+  const rows = list.map(f => `<tr>
+      <td><span class="s s-${f.sev}">${SEV[f.sev] || "Info"}</span></td>
+      <td><b>${esc(f.title)}</b><div class="d">${esc((f.desc || "").slice(0, 200))}</div></td>
+      <td>${esc(f.host || "")}:${esc(f.port || "")}</td>
+      <td>${esc(f.cve || "—")}</td><td>${esc(f.cvss ?? "—")}</td></tr>`).join("");
+  const w = window.open("", "_blank");
+  if (!w) { toast("Permita pop-ups para gerar o relatório.", "err"); return; }
+  w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+    <title>CYMAG — Relatório ${kind === "detailed" ? "Executivo" : "Técnico"}</title>
+    <style>
+      *{box-sizing:border-box} body{font-family:Inter,Arial,sans-serif;color:#111827;margin:0;padding:40px;line-height:1.5}
+      .hd{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #4f46e5;padding-bottom:16px;margin-bottom:24px}
+      .logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:20px}
+      .logo .b{width:34px;height:34px;border-radius:9px;background:#4f46e5;color:#fff;display:grid;place-items:center}
+      h1{font-size:22px;margin:0 0 4px} .mut{color:#6b7280;font-size:13px}
+      .kpis{display:flex;gap:16px;margin:24px 0}
+      .kpi{flex:1;border:1px solid #e5e7eb;border-radius:10px;padding:14px}
+      .kpi .n{font-size:26px;font-weight:800} .kpi .l{font-size:12px;color:#6b7280}
+      table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:10px}
+      th{text-align:left;color:#6b7280;font-size:11px;text-transform:uppercase;border-bottom:1px solid #e5e7eb;padding:8px}
+      td{padding:9px 8px;border-bottom:1px solid #eef0f3;vertical-align:top}
+      .d{color:#6b7280;font-size:11.5px;margin-top:3px}
+      .s{font-size:11px;font-weight:700;padding:2px 8px;border-radius:5px}
+      .s-crit{background:#fef2f2;color:#dc2626}.s-high{background:#fff5ed;color:#ea580c}
+      .s-med{background:#fffbeb;color:#d97706}.s-low{background:#eff6ff;color:#2563eb}.s-info{background:#f3f4f6;color:#6b7280}
+      .ft{margin-top:30px;color:#9ca3af;font-size:11px;border-top:1px solid #e5e7eb;padding-top:12px}
+      @media print{body{padding:20px}}
+    </style></head><body>
+    <div class="hd"><div class="logo"><span class="b">C</span> CYMAG Enterprise</div>
+      <div class="mut" style="text-align:right">Relatório ${kind === "detailed" ? "Executivo (com IA)" : "Técnico"}<br>${when}</div></div>
+    <h1>Avaliação de segurança — ${esc(s.target || "")}</h1>
+    <p class="mut">Documento gerado pela plataforma CYMAG. Valores de risco e impacto são estimativas para priorização.</p>
+    <div class="kpis">
+      <div class="kpi"><div class="n">${s.risk_score ?? 0}/100</div><div class="l">Índice de risco</div></div>
+      <div class="kpi"><div class="n">${list.length}</div><div class="l">Vulnerabilidades</div></div>
+      <div class="kpi"><div class="n">${counts.crit}</div><div class="l">Críticas</div></div>
+      <div class="kpi"><div class="n">${new Set(list.map(f => f.host)).size}</div><div class="l">Hosts afetados</div></div>
+    </div>
+    <h2 style="font-size:15px">Vulnerabilidades encontradas</h2>
+    <table><thead><tr><th>Sev.</th><th>Vulnerabilidade</th><th>Ativo</th><th>CVE</th><th>CVSS</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="ft">CYMAG Enterprise · Relatório de demonstração · As estimativas não constituem perícia contábil.</div>
+    <script>setTimeout(function(){window.print()},400)<\/script>
+    </body></html>`);
+  w.document.close();
+  toast("Relatório aberto — use Ctrl+P para salvar em PDF.", "ok");
 }
 
 /* ─── BOOT: retoma sessão se houver ─── */

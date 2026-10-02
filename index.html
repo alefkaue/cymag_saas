@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CYMAG Enterprise — Pentest autônomo para PMEs</title>
+<meta name="description" content="CYMAG Enterprise: plataforma de pentest autônomo com IA que traduz falhas de segurança em risco e custo para o dono do negócio. Demonstração interativa.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- Caminhos RELATIVOS a static/: funcionam tanto pelo Flask (página em / e
+     estáticos em /static) quanto como site estático (GitHub Pages / Vercel). -->
+<link rel="stylesheet" href="static/cymag.css">
+</head>
+<body>
+
+<!-- ══════════ LOGIN / LANDING ══════════ -->
+<section id="view-login" class="view active">
+  <!-- Lado esquerdo: proposta de valor -->
+  <div class="landing-hero">
+    <div class="brand"><span class="logo">C</span> <span>CYMAG Enterprise</span></div>
+    <span class="hero-eyebrow"><span class="dot"></span> Pentest autônomo com IA</span>
+    <h1>Segurança de nível enterprise para quem não tem um time de segurança.</h1>
+    <p class="lede">A CYMAG descobre, explora e explica as falhas da sua rede sozinha — e traduz cada risco em quanto ele custaria para a empresa, em português claro para o dono decidir.</p>
+    <div class="hero-points">
+      <div class="hero-point"><span class="ic">◆</span> <span>Agente autônomo: recon → enumeração → exploração → laudo, sem operador.</span></div>
+      <div class="hero-point"><span class="ic">◆</span> <span>Copiloto de IA (AEGIS) para remediação e cadeia de ataque.</span></div>
+      <div class="hero-point"><span class="ic">◆</span> <span>Visão do dono: "quanto me custa não corrigir" × "quanto custa corrigir".</span></div>
+    </div>
+    <div class="hero-metrics">
+      <div class="hero-metric"><div class="v">6</div><div class="k">áreas cobertas</div></div>
+      <div class="hero-metric"><div class="v">5</div><div class="k">planos comerciais</div></div>
+      <div class="hero-metric"><div class="v">0</div><div class="k">infra para testar</div></div>
+    </div>
+  </div>
+
+  <!-- Lado direito: entrar -->
+  <div class="login-pane">
+    <div class="login-card">
+      <div class="brand"><span class="logo">C</span> <span>CYMAG</span></div>
+      <h1>Entrar na plataforma</h1>
+      <p class="sub">Acesse com uma conta real (backend) ou explore tudo no modo demonstração.</p>
+
+      <button id="demo-btn" class="btn btn-gradient btn-full btn-lg">▶ Explorar demonstração (sem login)</button>
+      <p class="sub" style="text-align:center;margin:.6rem 0 0;font-size:.76rem">Roda 100% no seu navegador — nenhum dado sai daqui.</p>
+
+      <div class="login-or">ou entre com uma conta</div>
+
+      <div class="field">
+        <label class="field-label" for="login-email">E-mail corporativo</label>
+        <input id="login-email" class="input" type="email" autocomplete="email" value="dono@pme.com">
+      </div>
+      <div class="field">
+        <label class="field-label" for="login-pass">Chave de acesso</label>
+        <input id="login-pass" class="input" type="password" autocomplete="current-password" value="cybersecurity">
+      </div>
+      <div id="login-error" class="field-error hidden"></div>
+      <button id="login-btn" class="btn btn-primary btn-full" style="margin-top:.5rem">Acessar plataforma</button>
+
+      <p class="demo-accounts"><b>Contas de teste (backend):</b><br>
+        <b>PME</b>: <code>dono@pme.com</code> (dono) · <code>ti@pme.com</code> (TI) ·
+        <b>Gerenciado</b>: <code>dono@lojaverde.com</code> ·
+        <b>Equipe CYMAG</b>: <code>consultor@cymag.com</code> · <code>admin@cymag.com</code>.<br>
+        Senha <code>cybersecurity</code> (admin: <code>cymag-admin</code>).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ APP ══════════ -->
+<section id="view-app" class="view">
+  <div class="scrim" id="scrim"></div>
+  <div class="app">
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+      <div class="brand"><span class="logo">C</span> <span>CYMAG</span></div>
+      <nav id="nav"></nav>
+      <div class="sidebar-foot">
+        <div class="user-chip">
+          <div class="avatar" id="u-avatar">?</div>
+          <div>
+            <div class="u-name" id="u-name">—</div>
+            <div class="u-role" id="u-role">—</div>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-full btn-sm" id="logout-btn" style="margin-top:.5rem">Sair</button>
+      </div>
+    </aside>
+
+    <!-- MAIN -->
+    <div class="main">
+      <!-- barra de demonstração (só aparece no modo demo) -->
+      <div id="demobar" class="demobar hidden">
+        <span class="tag"><span class="dot"></span> Modo demonstração</span>
+        <span class="mut">Veja a plataforma por cada papel:</span>
+        <div class="role-switch" id="role-switch"></div>
+        <span class="spacer"></span>
+        <button class="btn btn-sm btn-ghost" id="demo-reset" title="Zerar decisões e plano da demo">Reiniciar demo</button>
+      </div>
+
+      <div class="topbar">
+        <div class="row">
+          <button class="btn btn-ghost btn-sm mobile-toggle" id="menu-toggle" aria-label="Menu">☰</button>
+          <div>
+            <h1 class="page-title" id="page-title">Painel</h1>
+            <div class="page-sub" id="page-sub"></div>
+          </div>
+        </div>
+        <div class="row" id="topbar-actions"></div>
+      </div>
+
+      <div class="content">
+        <div id="sec-overview"    class="section"></div>
+        <div id="sec-scan"        class="section"></div>
+        <div id="sec-autonomous"  class="section"></div>
+        <div id="sec-engagements" class="section"></div>
+        <div id="sec-areas"       class="section"></div>
+        <div id="sec-history"     class="section"></div>
+        <div id="sec-exec"        class="section"></div>
+        <div id="sec-resumo"      class="section"></div>
+        <div id="sec-central"     class="section"></div>
+        <div id="sec-conta"       class="section"></div>
+        <div id="sec-billing"     class="section"></div>
+        <div id="sec-planos"      class="section"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MODAL + TOASTS -->
+<div class="modal-back" id="modal-back"><div class="modal" id="modal"></div></div>
+<div class="toasts" id="toasts"></div>
+
+<!-- A camada de demonstração carrega ANTES do app: expõe window.__demoApi,
+     que o api() usa quando o modo demo está ativo. -->
+<script src="static/cymag-demo.js"></script>
+<script src="static/cymag.js"></script>
+</body>
+</html>

@@ -50,13 +50,15 @@ def create_app() -> Flask:
     # ── Blueprints (importados aqui para evitar imports circulares) ───────────
     from app.auth import auth_bp
     from app.autonomous import autonomous_bp
+    from app.billing import billing_bp
     from app.engagements import engagements_bp
     from app.main import main_bp
     from app.owner import owner_bp
     from app.reports import reports_bp
     from app.scans import scans_bp
 
-    for bp in (main_bp, auth_bp, scans_bp, engagements_bp, autonomous_bp, owner_bp, reports_bp):
+    for bp in (main_bp, auth_bp, scans_bp, engagements_bp, autonomous_bp,
+               owner_bp, billing_bp, reports_bp):
         app.register_blueprint(bp)
 
     # ── Tratamento de erros central ───────────────────────────────────────────

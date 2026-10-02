@@ -15,7 +15,7 @@ import json
 import logging
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from werkzeug.security import generate_password_hash
@@ -295,6 +295,27 @@ def list_accounts(limit: int = 100) -> List[Dict]:
 def set_account_plan(account_id: int, plan: str) -> None:
     with _LOCK, get_conn() as conn:
         conn.execute("UPDATE accounts SET plan=? WHERE id=?", (plan, account_id))
+        conn.commit()
+
+
+def subscribe_account(account_id: int, plan: str, managed_cadence_days: int) -> None:
+    """Troca o plano da conta e ajusta a cadência/próxima entrega do serviço gerenciado.
+
+    É a operação por trás do "assinar/trocar de plano" (self-service do dono).
+    Quando o novo plano é gerenciado, agenda a próxima entrega; quando não é,
+    zera a cadência. O onboarding passa a 'feito' em qualquer plano pago.
+    """
+    next_managed = None
+    if managed_cadence_days:
+        next_managed = (datetime.now(timezone.utc)
+                        + timedelta(days=managed_cadence_days)).isoformat(timespec="seconds")
+    with _LOCK, get_conn() as conn:
+        conn.execute(
+            "UPDATE accounts SET plan=?, managed_cadence_days=?, next_managed_at=?, "
+            "onboarding_done=? WHERE id=?",
+            (plan, managed_cadence_days, next_managed,
+             1 if plan != "comunidade" else 0, account_id),
+        )
         conn.commit()
 
 
