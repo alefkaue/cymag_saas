@@ -279,20 +279,21 @@ configuração/runtime do AEGIS (`tests/test_aegis_config.py`).
 
 Veja `.env.example` para a lista completa.
 
----
-┌───────────────────┬─────────────────────┬───────────────┬───────────────────────────────────┐
-│       Papel       │       E-mail        │     Senha     │             O que vê              │
-├───────────────────┼─────────────────────┼───────────────┼───────────────────────────────────┤
-│ Admin ⭐          │ admin@cymag.com     │ cymag-admin   │ Tudo + painel IA / AEGIS          │
-├───────────────────┼─────────────────────┼───────────────┼───────────────────────────────────┤
-│ Consultor CYMAG   │ consultor@cymag.com │ cybersecurity │ Console + Central                 │
-├───────────────────┼─────────────────────┼───────────────┼───────────────────────────────────┤
-│ Dono (PME)        │ dono@pme.com        │ cybersecurity │ Resumo de negócio (risco × custo) │
-├───────────────────┼─────────────────────┼───────────────┼───────────────────────────────────┤
-│ Analista de TI    │ ti@pme.com          │ cybersecurity │ Console técnico                   │
-├───────────────────┼─────────────────────┼───────────────┼───────────────────────────────────┤
-│ Dono (gerenciado) │ dono@lojaverde.com  │ cybersecurity │ Resumo (plano gerenciado)         │
-└───────────────────┴─────────────────────┴───────────────┴───────────────────────────────────┘
+## 🔑 Credenciais de acesso (referência rápida)
+
+Para entrar na plataforma (`http://127.0.0.1:5000`), use uma das contas abaixo.
+Para configurar e testar a IA, entre pela conta **Admin**.
+
+| Papel | E-mail | Senha | O que vê |
+|---|---|---|---|
+| **Admin** ⭐ | `admin@cymag.com` | `cymag-admin` | Tudo **+ painel IA / AEGIS** |
+| Consultor CYMAG | `consultor@cymag.com` | `cybersecurity` | Console + Central |
+| Dono (PME) | `dono@pme.com` | `cybersecurity` | Resumo de negócio (risco × custo) |
+| Analista de TI | `ti@pme.com` | `cybersecurity` | Console técnico |
+| Dono (gerenciado) | `dono@lojaverde.com` | `cybersecurity` | Resumo (plano gerenciado) |
+
+> 💡 A senha do admin pode ser trocada pela variável `CYMAG_ADMIN_PASSWORD` no `.env`.
+
 ---
 
 *Dúvida rápida: comece pelo **modo demonstração** para ver a plataforma por cada
