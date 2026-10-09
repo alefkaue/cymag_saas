@@ -53,6 +53,7 @@ const ICONS = {
   exec: '<path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>',
   resumo: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/>',
   central: '<path d="M9 11l3 3L22 4"/><path d="M22 12v7a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+  ia: '<path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/><circle cx="12" cy="12" r="4"/>',
   conta: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
   billing: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>',
   planos: '<path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>',
@@ -69,6 +70,7 @@ const SECTION_META = {
   exec:        { title: "Painel Executivo", sub: "Risco de negócio consolidado" },
   resumo:      { title: "Resumo", sub: "O que encontramos, o risco e o que decidir — em português" },
   central:     { title: "Central CYMAG", sub: "Entrega dos pentests gerenciados aos clientes" },
+  ia:          { title: "IA / AEGIS", sub: "Configure e teste a chave de API da IA (ex.: Groq)" },
   conta:       { title: "Minha Conta", sub: "Plano, equipe e serviços da sua empresa" },
   billing:     { title: "Assinatura", sub: "Seu plano, cobrança e gestão da assinatura" },
   planos:      { title: "Planos", sub: "Assinaturas, recursos e preços" },
@@ -83,7 +85,7 @@ const NAV = {
   owner:    ["resumo", "conta", "billing"],
   viewer:   ["exec", "history"],
   cymag:    ["overview", "scan", "autonomous", "engagements", "areas", "history", "central"],
-  admin:    ["overview", "scan", "autonomous", "engagements", "areas", "history", "central", "resumo"],
+  admin:    ["overview", "scan", "autonomous", "engagements", "areas", "history", "central", "resumo", "ia"],
 };
 
 /* ─── Severidade / score ─── */
@@ -234,6 +236,7 @@ const RENDER = {
   exec: renderExec,
   resumo: renderResumo,
   central: renderCentral,
+  ia: renderIA,
   conta: renderConta,
   billing: renderBilling,
   planos: renderPlans,
@@ -1090,6 +1093,143 @@ function renderCentral() {
 }
 
 /* ═══════════ MINHA CONTA (visão do dono) ═══════════ */
+/* ═══════════ IA / AEGIS (admin) ═══════════
+   Painel onde o admin cola uma chave de API (normalmente Groq), TESTA ao vivo e
+   APLICA — o AEGIS fica online sem reiniciar o servidor. A chave só trafega no
+   corpo da requisição; o backend devolve apenas um indicador mascarado. */
+function iaStatusBadge(s) {
+  const on = s.online;
+  const src = { env: "variável de ambiente (.env)", runtime: "painel admin", none: "—" }[s.source] || s.source;
+  return `
+    <div class="card mb">
+      <div class="row" style="justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap">
+        <div>
+          <h3 style="margin-bottom:.3rem">Status do AEGIS</h3>
+          <span class="badge ${on ? "sev-low" : "sev-high"}">${on ? "● Online" : "○ Offline"}</span>
+          <span class="mut" style="margin-left:.5rem">${on
+            ? `Provedor <b>${esc(s.provider)}</b> · modelo <code>${esc(s.model)}</code>`
+            : "Sem chave — rodando em modo offline (respostas determinísticas)."}</span>
+        </div>
+        <div class="mut" style="font-size:.82rem;text-align:right">
+          ${on ? `Chave <code>${esc(s.key_mask || "—")}</code><br>origem: ${esc(src)}` : ""}
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderIA() {
+  const box = $("#sec-ia");
+  box.innerHTML = `<div class="card"><span class="spinner"></span> <span class="mut">Carregando status da IA…</span></div>`;
+  api("/api/admin/ai/status").then(s => {
+    const models = (s.known_models || []).map(m => `<option value="${esc(m)}">`).join("");
+    box.innerHTML = `
+      <div id="ia-status">${iaStatusBadge(s)}</div>
+      <div class="grid grid-2">
+        <div class="card">
+          <h3>Configurar / testar a API</h3>
+          <p class="mut" style="font-size:.84rem;margin-bottom:.8rem">
+            Cole a chave de qualquer conta (ex.: a sua da <b>Groq</b>), escolha o modelo e
+            clique em <b>Testar</b>. Se a resposta vier, clique em <b>Aplicar</b> para ativar o AEGIS.</p>
+
+          <div class="field">
+            <label class="field-label" for="ia-key">Chave de API</label>
+            <input id="ia-key" class="input" type="password" autocomplete="off"
+                   placeholder="gsk_… (Groq) ou outra chave compatível">
+          </div>
+          <div class="field">
+            <label class="field-label" for="ia-model">Modelo</label>
+            <input id="ia-model" class="input" list="ia-models" value="${esc(s.model || "")}" autocomplete="off">
+            <datalist id="ia-models">${models}</datalist>
+          </div>
+          <details style="margin:.2rem 0 .8rem">
+            <summary class="mut" style="cursor:pointer;font-size:.82rem">Opções avançadas (outro provedor)</summary>
+            <div class="field" style="margin-top:.6rem">
+              <label class="field-label" for="ia-base">URL base (compatível com OpenAI)</label>
+              <input id="ia-base" class="input" value="${esc(s.default_base_url || "")}" autocomplete="off">
+              <p class="mut" style="font-size:.76rem;margin-top:.3rem">Padrão: Groq. Troque para usar outro provedor compatível.</p>
+            </div>
+            <div class="field">
+              <label class="field-label" for="ia-prompt">Pergunta de teste (opcional)</label>
+              <input id="ia-prompt" class="input" placeholder="Deixe vazio para usar o teste padrão" autocomplete="off">
+            </div>
+          </details>
+
+          <div class="row" style="gap:.5rem;flex-wrap:wrap">
+            <button class="btn btn-primary" id="ia-test">Testar conexão</button>
+            <button class="btn btn-gradient" id="ia-apply">Aplicar e ativar</button>
+            <button class="btn btn-ghost" id="ia-reset" title="Descartar a chave salva e voltar ao .env">Restaurar padrão</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Resultado do teste</h3>
+          <div id="ia-result"><p class="mut">Nenhum teste rodado ainda. A chave digitada nunca é exibida de volta.</p></div>
+        </div>
+      </div>`;
+
+    const keyEl = $("#ia-key"), modelEl = $("#ia-model"), baseEl = $("#ia-base");
+    const promptEl = $("#ia-prompt"), resEl = $("#ia-result");
+    const payload = () => ({
+      api_key: keyEl.value.trim(),
+      model: modelEl.value.trim(),
+      base_url: baseEl.value.trim(),
+      prompt: promptEl.value.trim(),
+    });
+
+    const refreshStatus = () => api("/api/admin/ai/status")
+      .then(st => { $("#ia-status").innerHTML = iaStatusBadge(st); }).catch(() => {});
+
+    $("#ia-test").addEventListener("click", () => {
+      const p = payload();
+      if (!p.api_key) { toast("Informe uma chave de API.", "err"); keyEl.focus(); return; }
+      const btn = $("#ia-test"); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Testando…';
+      resEl.innerHTML = `<p class="mut"><span class="spinner"></span> Consultando o provedor…</p>`;
+      api("/api/admin/ai/test", { method: "POST", body: p })
+        .then(r => { resEl.innerHTML = iaResultHTML(r, true); })
+        .catch(e => { resEl.innerHTML = iaResultHTML(e.data || { ok: false, error: e.message }, false); })
+        .finally(() => { btn.disabled = false; btn.textContent = "Testar conexão"; });
+    });
+
+    $("#ia-apply").addEventListener("click", () => {
+      const p = payload();
+      if (!p.api_key) { toast("Informe uma chave de API.", "err"); keyEl.focus(); return; }
+      const btn = $("#ia-apply"); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Aplicando…';
+      api("/api/admin/ai/apply", { method: "POST", body: p })
+        .then(() => { toast("AEGIS ativado com esta chave! ✅", "ok"); keyEl.value = ""; refreshStatus(); })
+        .catch(e => { toast((e.data && e.data.error) || e.message || "Falha ao aplicar.", "err"); })
+        .finally(() => { btn.disabled = false; btn.textContent = "Aplicar e ativar"; });
+    });
+
+    $("#ia-reset").addEventListener("click", () => {
+      const btn = $("#ia-reset"); btn.disabled = true;
+      api("/api/admin/ai/reset", { method: "POST" })
+        .then(() => { toast("Configuração restaurada para o padrão (.env).", "info"); keyEl.value = ""; refreshStatus(); })
+        .catch(e => { toast(e.message || "Falha ao restaurar.", "err"); })
+        .finally(() => { btn.disabled = false; });
+    });
+  }).catch(() => {
+    box.innerHTML = `<div class="card"><p class="mut">Falha ao carregar o painel de IA. Este painel é exclusivo do admin.</p></div>`;
+  });
+}
+
+function iaResultHTML(r, ok) {
+  if (!r || !r.ok) {
+    return `<div class="callout" style="border-left:3px solid var(--red)">
+      <b>❌ Falhou.</b><br>${esc((r && r.error) || "Erro desconhecido.")}
+      ${r && r.latency_ms != null ? `<div class="mut" style="font-size:.78rem;margin-top:.3rem">${r.latency_ms} ms até o erro</div>` : ""}
+    </div>`;
+  }
+  const u = r.usage || {};
+  return `<div class="callout" style="border-left:3px solid var(--green)">
+      <b>✅ Conexão OK</b> — ${esc(r.provider)} · <code>${esc(r.model)}</code> · ${r.latency_ms} ms
+    </div>
+    <div class="field" style="margin-top:.7rem">
+      <label class="field-label">Resposta do modelo</label>
+      <div class="mono" style="white-space:pre-wrap;background:var(--bg-soft,#0d1117);padding:.7rem;border-radius:8px;font-size:.82rem">${esc(r.answer || "(vazio)")}</div>
+    </div>
+    ${r.usage ? `<p class="mut" style="font-size:.8rem;margin-top:.5rem">Tokens — prompt: ${u.prompt_tokens ?? "?"} · resposta: ${u.completion_tokens ?? "?"} · total: ${u.total_tokens ?? "?"}</p>` : ""}`;
+}
+
 function renderConta() {
   const box = $("#sec-conta");
   box.innerHTML = `<div class="card"><span class="spinner"></span> <span class="mut">Carregando conta…</span></div>`;

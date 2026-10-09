@@ -40,6 +40,9 @@ class Config:
     # ─── IA (Groq / AEGIS) ──────────────────────────────────────────────────────
     GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
     AEGIS_MODEL = os.environ.get("CYMAG_AEGIS_MODEL", "llama-3.3-70b-versatile")
+    # Onde o painel admin persiste a chave configurada em runtime (fica em
+    # instance/, que é gitignored — nunca vai para o repositório).
+    AI_CONFIG_PATH = str(INSTANCE_DIR / "ai_config.json")
 
     # ─── Servidor ────────────────────────────────────────────────────────────────
     HOST = os.environ.get("CYMAG_HOST", "127.0.0.1").strip()

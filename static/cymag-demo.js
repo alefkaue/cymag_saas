@@ -20,6 +20,18 @@
   "use strict";
 
   const LS_KEY = "cymag_demo_v1";
+  // Estado simulado do painel de IA (apenas no modo demo; não persiste).
+  const DEMO_AI = { online: false, model: "llama-3.3-70b-versatile",
+    base: "https://api.groq.com/openai/v1", mask: "" };
+  function demoAIStatus() {
+    return { online: DEMO_AI.online, model: DEMO_AI.model, base_url: DEMO_AI.base,
+      provider: DEMO_AI.base === "https://api.groq.com/openai/v1" ? "groq" : "custom",
+      source: DEMO_AI.online ? "runtime" : "none", key_mask: DEMO_AI.mask,
+      default_base_url: "https://api.groq.com/openai/v1",
+      known_models: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant",
+        "openai/gpt-oss-120b", "openai/gpt-oss-20b",
+        "meta-llama/llama-4-scout-17b-16e-instruct", "qwen/qwen3-32b"] };
+  }
   const nowISO = () => new Date().toISOString().slice(0, 19);
   const addDaysISO = (d) => new Date(Date.now() + d * 864e5).toISOString().slice(0, 19);
   const clone = (x) => JSON.parse(JSON.stringify(x));
@@ -358,6 +370,25 @@
     if (url === "/api/me") return Object.assign({ authenticated: true }, identity());
     if (url === "/api/login" && method === "POST") return identity();
     if (url === "/api/logout") return { ok: true };
+
+    // ── IA / AEGIS (painel admin) — simulado no modo demo ──
+    if (url === "/api/admin/ai/status") return demoAIStatus();
+    if (url === "/api/admin/ai/test" && method === "POST") {
+      if (!(body.api_key || "").trim()) return reject(400, "Informe uma chave de API para testar.");
+      return { ok: true, latency_ms: 540 + Math.floor(Math.random() * 480),
+        model: (body.model || DEMO_AI.model), provider: (body.base_url && body.base_url !== DEMO_AI.base ? "custom" : "groq"),
+        answer: "AEGIS operacional. Pronto para analisar vulnerabilidades, estimar impacto financeiro e sugerir remediação. (resposta simulada no modo demonstração)",
+        usage: { prompt_tokens: 38, completion_tokens: 41, total_tokens: 79 } };
+    }
+    if (url === "/api/admin/ai/apply" && method === "POST") {
+      if (!(body.api_key || "").trim()) return reject(400, "Informe uma chave de API para aplicar.");
+      DEMO_AI.online = true; DEMO_AI.model = body.model || DEMO_AI.model;
+      DEMO_AI.base = body.base_url || DEMO_AI.base; DEMO_AI.mask = "demo…" + (body.api_key.trim().slice(-4) || "key");
+      return { ok: true, status: demoAIStatus() };
+    }
+    if (url === "/api/admin/ai/reset" && method === "POST") {
+      DEMO_AI.online = false; DEMO_AI.mask = ""; return { ok: true, status: demoAIStatus() };
+    }
 
     if (url === "/api/account") {
       const u = currentUser(), pk = u.is_staff ? "enterprise" : ST.planKey, p = PLANS[pk];

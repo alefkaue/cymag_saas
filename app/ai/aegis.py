@@ -9,13 +9,54 @@ importam `aegis` e chamam seus métodos. Quando não há chave/serviço, os mét
 
 import json
 import logging
+import os
 import re
 import time
+from pathlib import Path
 from typing import Optional
 
 from core.severity import SEV_WEIGHTS, risk_score
 
 logger = logging.getLogger("cymag.aegis")
+
+# Endpoint padrão da Groq (compatível com a API da OpenAI). Qualquer provedor
+# que fale o mesmo protocolo funciona informando outra `base_url`.
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+
+# Modelos Groq usados com frequência — alimenta as sugestões do painel admin.
+KNOWN_MODELS = [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "meta-llama/llama-4-scout-17b-16e-instruct",
+    "qwen/qwen3-32b",
+]
+
+
+def _mask_key(key: str) -> str:
+    """Mascara uma chave de API para exibição (nunca devolvemos a chave inteira)."""
+    if not key:
+        return ""
+    k = str(key)
+    return "••••" if len(k) <= 8 else f"{k[:4]}…{k[-4:]}"
+
+
+def _friendly_error(e: Exception) -> str:
+    """Traduz exceções comuns do provedor em mensagens claras para o painel."""
+    s = str(e)
+    low = s.lower()
+    if "401" in s or "invalid api key" in low or "authentication" in low or "unauthorized" in low:
+        return "Chave de API inválida ou expirada (401)."
+    if "model" in low and any(w in low for w in ("not found", "does not exist", "decommissioned", "not exist")):
+        return "Modelo não encontrado ou descontinuado neste provedor."
+    if "429" in s or "rate limit" in low:
+        return "Limite de requisições atingido (429). Tente de novo em instantes."
+    if "timeout" in low or "timed out" in low:
+        return "Tempo limite excedido ao falar com o provedor."
+    if any(w in low for w in ("connection", "getaddrinfo", "name resolution", "failed to establish")):
+        return "Não foi possível conectar ao provedor (verifique a URL base e a rede)."
+    return f"Falha ao chamar o provedor: {s[:200]}"
 
 # ─── SANITIZAÇÃO DE ENTRADA NÃO CONFIÁVEL ──────────────────────────────────────
 # Banners, títulos e evidências vêm dos ALVOS — um host hostil pode plantar texto
@@ -102,27 +143,172 @@ def calc_score(findings: list) -> int:
 
 
 class Aegis:
-    """Cliente do AEGIS. Sem chave, `call()` retorna None e o chamador cai no offline."""
+    """Cliente do AEGIS. Sem chave, `call()` retorna None e o chamador cai no offline.
+
+    A chave pode vir de três lugares (nesta ordem de prioridade):
+      1. `GROQ_API_KEY` no ambiente/.env  → fonte "env";
+      2. configuração salva pelo admin no painel (instance/ai_config.json) → "runtime";
+      3. nenhuma → AEGIS offline (fallbacks determinísticos).
+    """
 
     def __init__(self):
         self._client = None
         self._model = "llama-3.3-70b-versatile"
+        self._base_url = GROQ_BASE_URL
+        self._source = "none"       # none | env | runtime
+        self._key_mask = ""
+        self._config_path: Optional[Path] = None
 
-    def init(self, api_key: str, model: str) -> None:
-        self._model = model
-        if not api_key:
-            self._client = None
+    @staticmethod
+    def _make_client(api_key: str, base_url: Optional[str] = None):
+        from groq import Groq
+        kwargs = {"api_key": api_key}
+        if base_url and base_url != GROQ_BASE_URL:
+            kwargs["base_url"] = base_url
+        return Groq(**kwargs)
+
+    def init(self, api_key: str, model: str, config_path: Optional[str] = None) -> None:
+        """Inicializa o singleton no boot. Env tem prioridade; senão, usa a
+        configuração que o admin salvou pelo painel."""
+        self._model = (model or self._model)
+        self._base_url = GROQ_BASE_URL
+        self._config_path = Path(config_path) if config_path else None
+
+        if api_key:
+            self._apply(api_key, self._model, self._base_url, source="env")
+            return
+        saved = self._load_saved()
+        if saved and saved.get("api_key"):
+            self._apply(saved["api_key"], saved.get("model") or self._model,
+                        saved.get("base_url") or GROQ_BASE_URL, source="runtime")
+        else:
+            self._go_offline()
+
+    def _apply(self, api_key: str, model: str, base_url: str, source: str) -> None:
+        try:
+            self._client = self._make_client(api_key, base_url)
+            self._model = model or self._model
+            self._base_url = base_url or GROQ_BASE_URL
+            self._source = source
+            self._key_mask = _mask_key(api_key)
+        except Exception as e:
+            logger.warning("[AEGIS] Falha ao inicializar cliente: %s", e)
+            self._go_offline()
+
+    def _go_offline(self) -> None:
+        self._client = None
+        self._source = "none"
+        self._key_mask = ""
+
+    # ─── Persistência da configuração do admin ──────────────────────────────
+    def _load_saved(self) -> Optional[dict]:
+        if not self._config_path:
+            return None
+        try:
+            if self._config_path.exists():
+                return json.loads(self._config_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.warning("[AEGIS] Falha ao ler config persistida: %s", e)
+        return None
+
+    def _save(self, api_key: str, model: str, base_url: str) -> None:
+        if not self._config_path:
             return
         try:
-            from groq import Groq
-            self._client = Groq(api_key=api_key)
+            self._config_path.write_text(
+                json.dumps({"api_key": api_key, "model": model, "base_url": base_url}),
+                encoding="utf-8",
+            )
         except Exception as e:
-            logger.warning("[AEGIS] Falha ao inicializar Groq: %s", e)
-            self._client = None
+            logger.warning("[AEGIS] Falha ao persistir config: %s", e)
+
+    def _clear_saved(self) -> None:
+        try:
+            if self._config_path and self._config_path.exists():
+                self._config_path.unlink()
+        except Exception as e:
+            logger.warning("[AEGIS] Falha ao limpar config: %s", e)
 
     @property
     def online(self) -> bool:
         return self._client is not None
+
+    @property
+    def model(self) -> str:
+        return self._model
+
+    def status(self) -> dict:
+        """Estado atual do AEGIS para o painel admin (nunca expõe a chave)."""
+        return {
+            "online": self.online,
+            "model": self._model,
+            "base_url": self._base_url,
+            "provider": "groq" if self._base_url == GROQ_BASE_URL else "custom",
+            "source": self._source,
+            "key_mask": self._key_mask,
+            "known_models": KNOWN_MODELS,
+            "default_base_url": GROQ_BASE_URL,
+        }
+
+    def test_key(self, api_key: str, model: Optional[str] = None,
+                 base_url: Optional[str] = None, prompt: Optional[str] = None) -> dict:
+        """Faz uma chamada curta de verificação SEM alterar o singleton/estado."""
+        model = (model or self._model).strip()
+        base_url = (base_url or GROQ_BASE_URL).strip() or GROQ_BASE_URL
+        prompt = (prompt or "").strip() or "Responda em uma frase: confirme que você é o AEGIS e está operacional."
+        if not api_key:
+            return {"ok": False, "error": "Informe uma chave de API para testar."}
+        t0 = time.time()
+        try:
+            client = self._make_client(api_key, base_url)
+            resp = client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": "Você é o AEGIS, copiloto de segurança da CYMAG. Seja breve."},
+                    {"role": "user", "content": prompt},
+                ],
+                model=model,
+                temperature=0.2,
+                max_tokens=160,
+                timeout=22.0,
+            )
+            dt = int((time.time() - t0) * 1000)
+            msg = (resp.choices[0].message.content or "").strip()
+            usage = getattr(resp, "usage", None)
+            return {
+                "ok": True,
+                "latency_ms": dt,
+                "model": model,
+                "provider": "groq" if base_url == GROQ_BASE_URL else "custom",
+                "answer": msg,
+                "usage": {
+                    "prompt_tokens": getattr(usage, "prompt_tokens", None),
+                    "completion_tokens": getattr(usage, "completion_tokens", None),
+                    "total_tokens": getattr(usage, "total_tokens", None),
+                } if usage else None,
+            }
+        except Exception as e:
+            return {"ok": False, "error": _friendly_error(e),
+                    "latency_ms": int((time.time() - t0) * 1000)}
+
+    def reconfigure(self, api_key: str, model: Optional[str] = None,
+                    base_url: Optional[str] = None, persist: bool = True) -> dict:
+        """Aplica uma chave em runtime (e persiste) — AEGIS fica online sem reiniciar."""
+        model = (model or self._model).strip()
+        base_url = (base_url or GROQ_BASE_URL).strip() or GROQ_BASE_URL
+        self._apply(api_key, model, base_url, source="runtime")
+        if self.online and persist:
+            self._save(api_key, model, base_url)
+        return self.status()
+
+    def reset(self) -> dict:
+        """Remove a configuração salva e volta ao estado do ambiente (.env)."""
+        self._clear_saved()
+        env_key = os.environ.get("GROQ_API_KEY", "").strip()
+        if env_key:
+            self._apply(env_key, self._model, GROQ_BASE_URL, source="env")
+        else:
+            self._go_offline()
+        return self.status()
 
     def call(self, system: str, prompt: str, max_tokens: int = 1024, retries: int = 3) -> Optional[dict]:
         if not self._client:

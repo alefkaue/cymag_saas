@@ -45,9 +45,10 @@ def create_app() -> Flask:
     db.init_db()
 
     from app.ai.aegis import aegis
-    aegis.init(config.GROQ_API_KEY, config.AEGIS_MODEL)
+    aegis.init(config.GROQ_API_KEY, config.AEGIS_MODEL, config.AI_CONFIG_PATH)
 
     # ── Blueprints (importados aqui para evitar imports circulares) ───────────
+    from app.admin import admin_bp
     from app.auth import auth_bp
     from app.autonomous import autonomous_bp
     from app.billing import billing_bp
@@ -58,7 +59,7 @@ def create_app() -> Flask:
     from app.scans import scans_bp
 
     for bp in (main_bp, auth_bp, scans_bp, engagements_bp, autonomous_bp,
-               owner_bp, billing_bp, reports_bp):
+               owner_bp, billing_bp, reports_bp, admin_bp):
         app.register_blueprint(bp)
 
     # ── Tratamento de erros central ───────────────────────────────────────────

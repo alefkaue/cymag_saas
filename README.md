@@ -12,9 +12,19 @@ _"quanto me custa **não** corrigir isto?"_
 [![Flask](https://img.shields.io/badge/Flask-3.x-000000?logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
 [![Go](https://img.shields.io/badge/Go-scanner-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![SQLite](https://img.shields.io/badge/SQLite-stdlib-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
-[![Tests](https://img.shields.io/badge/tests-49%20passing-16a34a)](tests/)
+[![Tests](https://img.shields.io/badge/tests-55%20passing-16a34a)](tests/)
 
 </div>
+
+---
+
+> 📖 **Novo por aqui?** Comece pelo **[PLATAFORMA.md](PLATAFORMA.md)** — guia
+> completo do que é, como rodar e como funciona (inclui o novo painel de IA).
+
+> 🤖 **Configurar a IA ficou fácil:** entre como **admin** → menu **IA / AEGIS** e
+> cole qualquer chave de API (ex.: [Groq](https://console.groq.com/keys), gratuita).
+> **Teste ao vivo** (latência, resposta, tokens) e **ative** o AEGIS na hora, sem
+> editar arquivos nem reiniciar o servidor. Detalhes em [PLATAFORMA.md §5](PLATAFORMA.md#5--painel-de-ia-admin--configurar-e-testar-a-api).
 
 ---
 
