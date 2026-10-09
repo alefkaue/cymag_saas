@@ -280,6 +280,20 @@ configuração/runtime do AEGIS (`tests/test_aegis_config.py`).
 Veja `.env.example` para a lista completa.
 
 ---
+┌───────────────────┬─────────────────────┬───────────────┬───────────────────────────────────┐
+│       Papel       │       E-mail        │     Senha     │             O que vê              │
+├───────────────────┼─────────────────────┼───────────────┼───────────────────────────────────┤
+│ Admin ⭐          │ admin@cymag.com     │ cymag-admin   │ Tudo + painel IA / AEGIS          │
+├───────────────────┼─────────────────────┼───────────────┼───────────────────────────────────┤
+│ Consultor CYMAG   │ consultor@cymag.com │ cybersecurity │ Console + Central                 │
+├───────────────────┼─────────────────────┼───────────────┼───────────────────────────────────┤
+│ Dono (PME)        │ dono@pme.com        │ cybersecurity │ Resumo de negócio (risco × custo) │
+├───────────────────┼─────────────────────┼───────────────┼───────────────────────────────────┤
+│ Analista de TI    │ ti@pme.com          │ cybersecurity │ Console técnico                   │
+├───────────────────┼─────────────────────┼───────────────┼───────────────────────────────────┤
+│ Dono (gerenciado) │ dono@lojaverde.com  │ cybersecurity │ Resumo (plano gerenciado)         │
+└───────────────────┴─────────────────────┴───────────────┴───────────────────────────────────┘
+---
 
 *Dúvida rápida: comece pelo **modo demonstração** para ver a plataforma por cada
 papel, depois suba o backend e entre como `admin` para configurar a IA em
