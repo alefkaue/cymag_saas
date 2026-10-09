@@ -200,7 +200,8 @@ permissão explícita para testar.
 
 <div align="center">
 
-Projeto de portfólio — desenvolvido por **[@alefkaue](https://github.com/alefkaue)**.
+Projeto de portfólio — desenvolvido por **[@CymagCyber
+](https://github.com/CymagCyber)**.
 As estimativas de valor em reais são de ordem de grandeza, para priorização, e não
 constituem perícia contábil.
 
