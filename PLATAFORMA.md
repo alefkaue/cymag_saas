@@ -108,8 +108,22 @@ A plataforma é multi-conta e multi-papel. Cada papel vê uma tela diferente:
 ## 4. Como rodar
 
 ### Pré-requisitos
-- **Python 3.10+** (testado em 3.14).
+- **Python 3.10+** (testado em 3.14) — na instalação no Windows, marque
+  **"Add Python to PATH"**.
 - Opcional: Nmap instalado no SO (melhora a detecção de serviços; há fallback por socket).
+
+### ⚡ Jeito mais fácil (1 clique / 1 comando)
+
+Não precisa saber nada de terminal — os scripts abaixo **criam o ambiente,
+instalam as dependências (só na primeira vez) e sobem o servidor** sozinhos.
+
+- **Windows:** dê **dois cliques** em **`INICIAR.bat`**. Ele abre o navegador em
+  `http://127.0.0.1:5000` automaticamente. Para parar, feche a janela preta.
+- **Linux / macOS:** no terminal, rode `chmod +x iniciar.sh && ./iniciar.sh`.
+
+> Entre com **`admin@cymag.com`** / **`cymag-admin`**. Pronto.
+
+Se preferir fazer na mão (ou entender cada passo), siga abaixo.
 
 ### Passo a passo (Windows — PowerShell)
 

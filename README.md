@@ -21,6 +21,10 @@ _"quanto me custa **não** corrigir isto?"_
 > 📖 **Novo por aqui?** Comece pelo **[PLATAFORMA.md](PLATAFORMA.md)** — guia
 > completo do que é, como rodar e como funciona (inclui o novo painel de IA).
 
+> ⚡ **Rodar com 1 clique:** dois cliques em **`INICIAR.bat`** (Windows) ou
+> `./iniciar.sh` (Linux/macOS) — cria o ambiente, instala tudo e sobe o servidor.
+> Login: **`admin@cymag.com`** / **`cymag-admin`**.
+
 > 🤖 **Configurar a IA ficou fácil:** entre como **admin** → menu **IA / AEGIS** e
 > cole qualquer chave de API (ex.: [Groq](https://console.groq.com/keys), gratuita).
 > **Teste ao vivo** (latência, resposta, tokens) e **ative** o AEGIS na hora, sem
